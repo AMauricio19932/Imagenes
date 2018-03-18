@@ -13,7 +13,7 @@
 using namespace std;
 using namespace cv;
 
-float n_x = 10, n_y = 8, th_eval = 0.1, dsty;
+float n_x = 5, n_y = 4, th_eval = 0.2, dsty;
 vector<vector<int> > dd(n_y, vector<int>(n_x));
 
 void write_time(Mat &frame, int64 start, double &tda, int nframes) {
@@ -121,7 +121,7 @@ vector<Point2f> core_get_keypoints(Mat frame, int areaMin, float flagP, float ra
 
   h /=  keypoints.size();
   w /=  keypoints.size();
-  circle(frame, Point2f(h,w), 4, Scalar(255, 0, 255), -1);
+  //circle(frame, Point2f(h,w), 4, Scalar(255, 0, 255), -1);
 
   if(keypoints.size() > 20){
     k = keypoints.size() - 20;
@@ -190,7 +190,7 @@ vector<Point2f> core_get_keypoints(Mat frame, int areaMin, float flagP, float ra
         if (euclideanDist(minEllipse[i].center, keypoints[j].pt) < 3){
           hist[j]++;
           pointCentre[j] += minEllipse[i].center;
-          ellipse( frame, minEllipse[i], Scalar(0, 0, 255), 2, 8 );
+          //ellipse( frame, minEllipse[i], Scalar(0, 0, 255), 2, 8 );
         }
       }
     }
@@ -201,7 +201,7 @@ vector<Point2f> core_get_keypoints(Mat frame, int areaMin, float flagP, float ra
     if (hist[i] > 3) {
       pointCentre[i].x /= hist[i] ;
       pointCentre[i].y /= hist[i] ;
-      circle(frame, pointCentre[i], 2, Scalar(0, 255, 0), -1);
+      //circle(frame, pointCentre[i], 2, Scalar(0, 255, 0), -1);
       i++;
     } else {
       hist.erase(hist.begin() + i);
@@ -212,7 +212,7 @@ vector<Point2f> core_get_keypoints(Mat frame, int areaMin, float flagP, float ra
 }
 
 vector<Point2f> get_keypoints(Mat frame){
-  return core_get_keypoints(frame, 300, 0, 1);
+  return core_get_keypoints(frame, 200, 0, 1);
 }
 
 Point2f get_vector(Point2f p, Point2f q){
@@ -324,11 +324,12 @@ void matching_normal(vector<Point2f> &arrange, vector<Point2f> points){
   }
 }
 
-void first_function(Mat frame, vector<Point2f> points, vector<Point2f> &arrange){
+void first_function(vector<Point2f> points, vector<Point2f> &arrange){
   vector<int> corners(4);
   bool nr;
   Point2f axis_x, axis_y;
   float dis_x, dis_y;
+  arrange.clear();
 
   axis_x = get_vector(points[1], points[0]);
   dis_x = euclideanDist(points[0], points[1]);
@@ -367,7 +368,7 @@ void limits_density(vector<vector<Point2f> > &int_points, vector<Point2f> arrang
 }
 
 void update_density(Mat &frame, vector<Point2f> points, string name){
-  for (size_t j = 0; j < 20; j++) {
+  for (size_t j = 0; j < points.size(); j++) {
     circle(frame, points[j], 2, Scalar(0, 0, 0), -1);
     imshow( name, frame );
   }
@@ -433,7 +434,7 @@ void get_dd_limits(vector<Point2f> arrange, vector<Point2f> crs, vector<Point2f>
   }
 }
 
-void affection(vector<Point2f> arrange, vector<Point2f> crs, vector<vector<Point2f> > &output){
+bool affection(vector<Point2f> arrange, vector<Point2f> crs, vector<vector<Point2f> > &output){
   vector<Point2f> lts;
   lts.push_back(Point2f(0, 0)); //min
   lts.push_back(Point2f(0, 0)); //max
@@ -442,8 +443,9 @@ void affection(vector<Point2f> arrange, vector<Point2f> crs, vector<vector<Point
   float p_y = (crs[1].y - crs[0].y)/n_y;
 
   get_dd_limits(arrange, crs, lts, p_x, p_y);
+  bool flag = dd_evaluation(lts);
 
-  if(dd_evaluation(lts)){
+  if(flag){
     output.push_back(arrange);
     for (size_t k = 0; k < arrange.size(); k++)
       for (size_t i = lts[0].x; i <= lts[1].x; i++)
@@ -452,18 +454,95 @@ void affection(vector<Point2f> arrange, vector<Point2f> crs, vector<vector<Point
             if((j-1)*p_y < arrange[k].y && arrange[k].y < j*p_y)
               dd[j-1][i-1]++;
   }
-
+  return flag;
 }
 
-void normalize_density_nuf(vector<Point2f> crs, vector<vector<Point2f> > input, vector<vector<Point2f> > &output, int nuf){
+void normalize_density_nuf(vector<Point2f> crs, vector<vector<Point2f> > input,
+                           vector<vector<Point2f> > &output, vector<Mat> int_frames,
+                           vector<Mat> &fin_frames, int nuf){
   dsty = nuf*20/(n_x*n_y);
+  vector<int> indx;
+  bool flag;
+  for (size_t i = 0; i < input.size(); i++)
+    indx.push_back(i);
 
   srand ( unsigned ( time(0) ) ); //random_shuffle
-  random_shuffle ( input.begin(), input.end() );
+  random_shuffle ( indx.begin(), indx.end() );
 
   for (size_t i = 0; i < input.size(); i++) {
-    affection(input[i], crs, output);
-    if(output.size() >= nuf)
-      break;
+    flag = affection(input[indx[i]], crs, output);
+    if(flag) fin_frames.push_back(int_frames[indx[i]]);
+    if(output.size() == nuf) break;
   }
+}
+
+void get_random_samples(vector<vector<Point2f> > input, vector<vector<Point2f> > &output,
+                        vector<Mat> &int_frames, vector<Mat> &fin_frames, int nuf){
+  vector<int> indx;
+  for (size_t i = 0; i < input.size(); i++)
+    indx.push_back(i);
+
+  srand ( unsigned ( time(0) ) ); //random_shuffle
+  random_shuffle ( indx.begin(), indx.end() );
+
+  int sv = int(input.size()/nuf);
+  int k = 0;
+  while(output.size() < nuf){
+    output.push_back(input[indx[k*sv]]);
+    fin_frames.push_back(int_frames[indx[k*sv]]);
+    k++;
+  }
+}
+
+void detect_rings(Mat &frame, vector<vector<Point2f> > &int_points, bool &first_flag,
+                  vector<Point2f> &corners, vector<Mat> &int_frames){
+  vector<Point2f> points = get_keypoints(frame);
+  vector<Point2f> arrange;
+  if (points.size() == 20){
+    if(first_flag){
+      first_flag = 0;
+      first_function(points, arrange);
+      if(arrange.size() != 20){
+        first_flag = 1;
+      }else{
+        limits_density(int_points, arrange, corners);
+        int_frames.push_back(frame);
+        trace_line(frame, arrange);
+        //update_density(bg_density, arrange, "Real Time");
+      }
+    }else{
+      matching_normal(arrange, points);
+      if(get_opposite(points, points[0]) == 19 && arrange.size() == 20){
+        limits_density(int_points, arrange, corners);
+        int_frames.push_back(frame);
+        trace_line(frame, arrange);
+        //update_density(bg_density, arrange, "Real Time");
+      }else{
+        first_flag = 1;
+      }
+    }
+  } else {
+    first_flag = 1;
+  }
+}
+
+double calibrate_function(Size patternsize, Size imageSize, float rm, Mat &cameraMatrix, Mat &distCoeffs, vector<vector<Point2f> > fin_points){
+  vector<Point3f> vectorPoints;
+  vector<vector<Point3f> > objectPoints;
+  vector<Mat> rvecs, tvecs;
+
+  for( int i = 0; i < patternsize.height; ++i )
+    for( int j = 0; j < patternsize.width; ++j )
+      vectorPoints.push_back(Point3f(float(j)*rm, float(i)*rm, 0));
+
+  for (int k = 0; k < fin_points.size(); k++)
+    objectPoints.push_back(vectorPoints);
+
+  cameraMatrix = Mat::eye(3, 3, CV_64F);
+  distCoeffs = Mat::zeros(8, 1, CV_64F);
+  double rms = calibrateCamera(objectPoints, fin_points, imageSize, cameraMatrix, distCoeffs, rvecs, tvecs);
+  std::cout << "error = "<< rms << '\n';
+  std::cout << "cameraMatrix = "<< cameraMatrix << '\n';
+  std::cout << "distCoeffs = "<< distCoeffs << '\n';
+  return rms;
 }
